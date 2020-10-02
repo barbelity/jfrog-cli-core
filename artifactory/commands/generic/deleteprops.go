@@ -1,7 +1,9 @@
 package generic
 
 import (
+	"errors"
 	"github.com/jfrog/jfrog-client-go/utils/errorutils"
+	"github.com/jfrog/jfrog-client-go/utils/log"
 )
 
 type DeletePropsCommand struct {
@@ -30,19 +32,30 @@ func (deleteProps *DeletePropsCommand) Run() error {
 	if err != nil {
 		return err
 	}
-	reader, err := searchItems(deleteProps.Spec(), servicesManager)
-	if err != nil {
-		return err
+
+	var errorOccurred = false
+	for i := 0; i < len(deleteProps.Spec().Files); i++ {
+		propsParams, err := GetPropsParams(deleteProps.Spec().Get(i), deleteProps.props)
+		if err != nil {
+			errorOccurred = true
+			log.Error(err)
+			continue
+		}
+
+		partialSuccess, partialFailed, err := servicesManager.DeleteProps(propsParams)
+		success := deleteProps.result.SuccessCount() + partialSuccess
+		deleteProps.result.SetSuccessCount(success)
+		failed := deleteProps.result.FailCount() + partialFailed
+		deleteProps.result.SetFailCount(failed)
+		if err != nil {
+			errorOccurred = true
+			log.Error(err)
+			continue
+		}
 	}
-	defer reader.Close()
-	propsParams := GetPropsParams(reader, deleteProps.props)
-	success, err := servicesManager.DeleteProps(propsParams)
-	result := deleteProps.Result()
-	result.SetSuccessCount(success)
-	totalLength, totalLengthErr := reader.Length()
-	result.SetFailCount(totalLength - success)
-	if totalLengthErr != nil {
-		return totalLengthErr
+
+	if errorOccurred {
+		return errors.New("Delete Properties finished with errors, please review the logs.")
 	}
 	return err
 }

@@ -78,7 +78,7 @@ func (builder *buildInfoBuilder) Build(module string) (*buildinfo.BuildInfo, err
 
 	// Set build properties only when pushing image.
 	if builder.commandType == Push {
-		_, err = builder.setBuildProperties()
+		_, _, err = builder.setBuildProperties()
 		if err != nil {
 			return nil, err
 		}
@@ -227,15 +227,15 @@ func (builder *buildInfoBuilder) handleMissingLayer(layerMediaType, layerFileNam
 }
 
 // Set build properties on docker image layers in Artifactory.
-func (builder *buildInfoBuilder) setBuildProperties() (int, error) {
+func (builder *buildInfoBuilder) setBuildProperties() (successCount, failedCount int, err error) {
 	props, err := buildutils.CreateBuildProperties(builder.buildName, builder.buildNumber)
 	if err != nil {
-		return 0, err
+		return
 	}
 	writer, err := content.NewContentWriter("results", true, false)
 	if err != nil {
 		log.Error("Fail to create new content writer for docker layer")
-		return 0, err
+		return
 	}
 	defer writer.Close()
 	for _, item := range builder.layers {
@@ -243,7 +243,7 @@ func (builder *buildInfoBuilder) setBuildProperties() (int, error) {
 	}
 	reader := content.NewContentReader(writer.GetFilePath(), content.DefaultKey)
 	defer reader.Close()
-	return builder.serviceManager.SetProps(services.PropsParams{Reader: reader, Props: props})
+	return builder.serviceManager.SetPropsWithContentReader(services.PropsReaderParams{Reader: reader, Properties: props})
 }
 
 // Create docker build info

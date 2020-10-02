@@ -1,7 +1,9 @@
 package generic
 
 import (
+	"errors"
 	"github.com/jfrog/jfrog-client-go/utils/errorutils"
+	"github.com/jfrog/jfrog-client-go/utils/log"
 )
 
 type SetPropsCommand struct {
@@ -31,20 +33,29 @@ func (setProps *SetPropsCommand) Run() error {
 		return err
 	}
 
-	reader, err := searchItems(setProps.Spec(), servicesManager)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	propsParams := GetPropsParams(reader, setProps.props)
-	success, err := servicesManager.SetProps(propsParams)
+	var errorOccurred = false
+	for i := 0; i < len(setProps.Spec().Files); i++ {
+		propsParams, err := GetPropsParams(setProps.Spec().Get(i), setProps.props)
+		if err != nil {
+			errorOccurred = true
+			log.Error(err)
+			continue
+		}
 
-	result := setProps.Result()
-	result.SetSuccessCount(success)
-	totalLength, totalLengthErr := reader.Length()
-	result.SetFailCount(totalLength - success)
-	if totalLengthErr != nil {
-		return totalLengthErr
+		partialSuccess, partialFailed, err := servicesManager.SetProps(propsParams)
+		success := setProps.result.SuccessCount() + partialSuccess
+		setProps.result.SetSuccessCount(success)
+		failed := setProps.result.FailCount() + partialFailed
+		setProps.result.SetFailCount(failed)
+		if err != nil {
+			errorOccurred = true
+			log.Error(err)
+			continue
+		}
+	}
+
+	if errorOccurred {
+		return errors.New("Set Properties finished with errors, please review the logs.")
 	}
 	return err
 }

@@ -1,17 +1,12 @@
 package generic
 
 import (
-	"errors"
-
 	"github.com/jfrog/jfrog-cli-core/artifactory/spec"
 	"github.com/jfrog/jfrog-cli-core/utils/config"
 	"github.com/jfrog/jfrog-cli-core/utils/coreutils"
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
 	clientConfig "github.com/jfrog/jfrog-client-go/config"
-	"github.com/jfrog/jfrog-client-go/utils/errorutils"
-	"github.com/jfrog/jfrog-client-go/utils/io/content"
-	"github.com/jfrog/jfrog-client-go/utils/log"
 )
 
 type PropsCommand struct {
@@ -61,64 +56,14 @@ func createPropsServiceManager(threads int, artDetails *config.ArtifactoryDetail
 	return artifactory.New(&artAuth, serviceConfig)
 }
 
-func searchItems(spec *spec.SpecFiles, servicesManager artifactory.ArtifactoryServicesManager) (resultReader *content.ContentReader, err error) {
-	var errorOccurred = false
-	temp := []*content.ContentReader{}
-	writer, err := content.NewContentWriter("results", true, false)
-	if err != nil {
-		return
-	}
-	defer writer.Close()
-	for i := 0; i < len(spec.Files); i++ {
-		searchParams, err := getSearchParamsForProps(spec.Get(i))
-		if err != nil {
-			errorOccurred = true
-			log.Error(err)
-			continue
-		}
-		reader, err := servicesManager.SearchFiles(searchParams)
-		if err != nil {
-			errorOccurred = true
-			log.Error(err)
-			continue
-		}
-		temp = append(temp, reader)
-		if i == 0 {
-			defer func() {
-				for _, reader := range temp {
-					reader.Close()
-				}
-			}()
-		}
-	}
-	resultReader, err = content.MergeReaders(temp, content.DefaultKey)
-	if err != nil {
-		return
-	}
-	if errorOccurred {
-		err = errorutils.CheckError(errors.New("Operation finished with errors, please review the logs."))
-	}
-	return
-}
-
-func GetPropsParams(reader *content.ContentReader, properties string) (propsParams services.PropsParams) {
+func GetPropsParams(f *spec.File, properties string) (propsParams services.PropsParams, err error) {
 	propsParams = services.NewPropsParams()
-	propsParams.Reader = reader
-	propsParams.Props = properties
-	return
-}
-
-func getSearchParamsForProps(f *spec.File) (searchParams services.SearchParams, err error) {
-	searchParams = services.NewSearchParams()
-	searchParams.ArtifactoryCommonParams = f.ToArtifactoryCommonParams()
-	searchParams.Recursive, err = f.IsRecursive(true)
+	propsParams.Properties = properties
+	propsParams.ArtifactoryCommonParams = f.ToArtifactoryCommonParams()
+	propsParams.Recursive, err = f.IsRecursive(true)
 	if err != nil {
 		return
 	}
-
-	searchParams.IncludeDirs, err = f.IsIncludeDirs(false)
-	if err != nil {
-		return
-	}
+	propsParams.IncludeDirs, err = f.IsIncludeDirs(false)
 	return
 }
